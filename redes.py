@@ -60,15 +60,12 @@ D = {'personas':list(D.keys()),'capítulos':list(D.values())}
 import pandas as pd
 
 DF = pd.DataFrame.from_dict(D)
-#DF.to_excel('datos.xlsx')
 DF = DF.dropna()
 ###################################
 #### parte 3: juegos con excel ####
 ###################################
 
-## Lea el archivo excel datos.xlsx. Use pandas
-## ¿Cuáles son las columnas?
-## Transforme en diccionario el dataframe. La primera columna funciona como keys, la segunda como values
+## La primera columna funciona como keys, la segunda como values
 
 personas = list(DF['personas'])
 capitulos = list(DF['capítulos'])
@@ -108,7 +105,7 @@ def F(p1,p2):
     for elemento in l1:
         if elemento in l2:
             inter += 1
-    return inter
+    return inter/len(set(l1+l2))
 
 print(F('yawira', 'yuqa-y'))
        
@@ -135,13 +132,14 @@ G = nx.Graph()
 ## recorremos D
 for key in D.keys():
     for keykey in D.keys():
-        if F(key,keykey)>1:
+        if D[key][keykey] > 0.95 and key!=keykey:
             G.add_edge(key,keykey,weigth=F(key,keykey))
+        
 ## podamos aristas
 Gcc = sorted(nx.connected_components(G), key=len, reverse=True)
 G = G.subgraph(Gcc[0])
 
-G = nx.maximum_spanning_tree(G, weight='weight')
+#G = nx.maximum_spanning_tree(G, weight='weight')
     
 ##########################################
 ## parte 6: descripción y visualización ##
@@ -160,31 +158,48 @@ plt.axis('off')
 plt.savefig('graph.jpg', format='jpg', transparent=True, bbox_inches='tight',dpi=1080)
 plt.show()
 
-from node2vec import Node2Vec
-from sklearn.decomposition import PCA
+#########################
+## parte 7: clustering ##
+#########################
+
+from sklearn.cluster import KMeans
 import numpy as np
 
-# Crea un objeto Node2Vec y entrena el modelo
-node2vec = Node2Vec(G, dimensions=64, walk_length=30, num_walks=200, workers=4)
-model = node2vec.fit(vector_size = 16, window=10, min_count=1)
+# Obtiene la matriz de adyacencia del grafo
+adj_matrix = np.asarray(nx.to_numpy_matrix(G))
 
-# Obtiene los vectores de características para cada nodo en forma de diccionario
-embeddings = {node: model.wv[node] for node in G.nodes()}
+# Realiza el clustering utilizando k-means
+num_clusters = 2  # Número de clusters deseado
+kmeans = KMeans(n_clusters=num_clusters)
+kmeans.fit(adj_matrix)
 
-# Convierte los vectores de características en una matriz numpy
-node_ids = list(embeddings.keys())
-node_vectors = np.array(list(embeddings.values()))
+# Obtiene las etiquetas de cluster asignadas a cada nodo
+cluster_labels = kmeans.labels_
 
-# Aplica PCA para reducir la dimensionalidad de los vectores a 2 dimensiones
-pca = PCA(n_components=2)
-node_vectors_2d = pca.fit_transform(node_vectors)
+# Imprime los resultados
+C = dict(zip(G.nodes(), cluster_labels))
 
-# Visualiza los nodos en el espacio reducido
-plt.figure(figsize=(8, 6))
-plt.scatter(node_vectors_2d[:, 0], node_vectors_2d[:, 1], c='b')
-for i, node_id in enumerate(node_ids):
-    plt.annotate(node_id, (node_vectors_2d[i, 0], node_vectors_2d[i, 1]))
-plt.xlabel('Componente Principal 1')
-plt.ylabel('Componente Principal 2')
-plt.title('Visualización de nodos con PCA')
+## centralidad
+eigenvector_centrality = nx.betweenness_centrality(G)
+
+## ordenamos la centralidad
+centrality_dict_sorted = dict(sorted(eigenvector_centrality.items(), key=lambda item: item[1], reverse=True))
+
+## nodos más importantes
+C0 = list({n:centrality_dict_sorted[n] for n in centrality_dict_sorted.keys() if C[n] == 0}.keys())[:5]
+C1 = list({n:centrality_dict_sorted[n] for n in centrality_dict_sorted.keys() if C[n] == 1}.keys())[:5]
+
+## labels
+labels0 = {n:n for n in C0}
+labels1 = {n:n for n in C1}
+
+labels0.update(labels1)
+
+## visualizamos los clusters!
+pos = nx.kamada_kawai_layout(G)#, iterations=100, seed=0)
+nx.draw_networkx_nodes(G, pos, node_size = 10, node_color=['orange' if C[node] == 1 else 'cyan' for node in G.nodes()],linewidths=0.1,alpha=0.85) 
+nx.draw_networkx_edges(G, pos, alpha=0.5,width=0.25,edge_color='gray')
+nx.draw_networkx_labels(G,pos,labels0,alpha=0.65,font_size=4,font_color='k',font_family='monospace')
+plt.axis('off')
+plt.savefig('graph_clusters.jpg', format='jpg', transparent=True, bbox_inches='tight',dpi=1080)
 plt.show()
